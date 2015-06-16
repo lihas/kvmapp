@@ -12,12 +12,12 @@ OBJS = $(SRCS:.c=.o)
 kvmapp: $(OBJS)
 	$(LD) $(LDFLAGS) -o $@ $^
 
-kvmapp.o: guest.bin.h
+kvmapp.o: unrestricted_guest.bin.h
 
-guest.bin.h: guest.bin
+unrestricted_guest.bin.h: unrestricted_guest.bin
 	xxd -i $< $@
 
-guest.bin: guest.o
+unrestricted_guest.bin: unrestricted_guest.o
 	objcopy -O binary $< $@
 
 %.o: %.c
@@ -28,4 +28,4 @@ guest.bin: guest.o
 
 .PHONY: clean
 clean:
-	@rm -f kvmapp guest.o guest.bin guest.bin.h $(OBJS)
+	@rm -f kvmapp unrestricted_guest.o unrestricted_guest.bin unrestricted_guest.bin.h $(OBJS)

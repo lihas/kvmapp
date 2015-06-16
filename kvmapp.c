@@ -17,6 +17,8 @@
 
 #include <linux/kvm.h>
 
+#include "unrestricted_guest.bin.h"
+
 /** Path to KVM subsystem device file */
 #define KVM_PATH "/dev/kvm"
 
@@ -27,7 +29,7 @@
 struct vm {
 	int vm_fd;                       /**< virtual machine descriptor */
 	unsigned num_vcpus;              /**< number of virtual CPUs */
-	int vcpu_mmap_size;              /**< size of shared vCPU region */
+	unsigned vcpu_mmap_size;         /**< size of shared vCPU region */
 	int vcpu_fd[MAX_VCPUS];          /**< vCPU file descriptors */
 	struct kvm_run *vcpu[MAX_VCPUS]; /**< vCPU kvm_run structures */
 	unsigned num_mem_slots;          /**< number of attached mem slots */
@@ -38,6 +40,9 @@ static int  kvm_open(const char *);
 static int  vm_create(int, struct vm *);
 static int  vm_create_vcpu(struct vm *);
 static int  vm_attach_memory(struct vm *, uintptr_t, size_t, void *);
+static int  vm_get_regs(struct vm *, unsigned, struct kvm_regs *);
+static int  vm_set_regs(struct vm *, unsigned, const struct kvm_regs *);
+static int  vm_run(struct vm *, unsigned);
 static void vm_destroy(struct vm *);
 
 /**
@@ -135,7 +140,7 @@ int vm_create_vcpu(struct vm *vm)
  *
  * @return ID of created memory region, or -1 if an error occured
  */
-static int vm_attach_memory(struct vm *vm, uintptr_t gpa, size_t size, void *addr)
+int vm_attach_memory(struct vm *vm, uintptr_t gpa, size_t size, void *addr)
 {
 	struct kvm_userspace_memory_region mem;
 
@@ -154,6 +159,61 @@ static int vm_attach_memory(struct vm *vm, uintptr_t gpa, size_t size, void *add
 		return vm->num_mem_slots++;
 
 	return -1;
+}
+
+/**
+ * Read general purpose registers from a virtual CPU
+ *
+ * @param vm   virtual machine descriptor
+ * @param vcpu virtual CPU identifier
+ * @param regs general purpose registers
+ *
+ * @return zero on success, or -1 if an error occured
+ */
+int vm_get_regs(struct vm *vm, unsigned vcpu, struct kvm_regs *regs)
+{
+	assert(vm != NULL);
+	assert(vm->num_vcpus > vcpu);
+	assert(vm->vcpu_fd[vcpu] > 0);
+	assert(regs != NULL);
+
+	return ioctl(vm->vcpu_fd[vcpu], KVM_GET_REGS, regs);
+}
+
+/**
+ * Write general purpose registers into a virtual CPU
+ *
+ * @param vm   virtual machine descriptor
+ * @param vcpu virtual CPU identifier
+ * @param regs general purpose registers
+ *
+ * @return zero on success, or -1 if an error occured
+ */
+int vm_set_regs(struct vm *vm, unsigned vcpu, const struct kvm_regs *regs)
+{
+	assert(vm != NULL);
+	assert(vm->num_vcpus > vcpu);
+	assert(vm->vcpu_fd[vcpu] > 0);
+	assert(regs != NULL);
+
+	return ioctl(vm->vcpu_fd[vcpu], KVM_SET_REGS, regs);
+}
+
+/**
+ * Run a virtual CPU of a virtual machine
+ *
+ * @param vm   virtual machine descriptor
+ * @param vcpu virtua CPU identifier
+ *
+ * @return zero on success, or -1 if an error occured
+ */
+int vm_run(struct vm *vm, unsigned vcpu)
+{
+	assert(vm != NULL);
+	assert(vm->num_vcpus > vcpu);
+	assert(vm->vcpu_fd[vcpu] > 0);
+
+	return ioctl(vm->vcpu_fd[vcpu], KVM_RUN, 0);
 }
 
 /**
@@ -182,9 +242,11 @@ int main(int argc, const char *argv[])
 {
 	static const size_t num_bytes = 0x100000;
 
+	int rc;
 	int kvm;
 	struct vm vm;
 	void *guestmem;
+	struct kvm_regs regs;
 	int ret = EXIT_FAILURE;
 
 	kvm = kvm_open(KVM_PATH);
@@ -204,6 +266,34 @@ int main(int argc, const char *argv[])
 
 	if (vm_attach_memory(&vm, 0x0, num_bytes, guestmem) < 0)
 		goto out_guestmem;
+
+	if (vm_get_regs(&vm, 0, &regs) != 0)
+		goto out_guestmem;
+
+	regs.rflags = 0x2;
+	regs.rip = 0;
+	if (vm_set_regs(&vm, 0, &regs) != 0)
+		goto out_guestmem;
+
+	memcpy(guestmem, unrestricted_guest_bin, unrestricted_guest_bin_len);
+
+	for (/* NOTHING */; /* NOTHING */; /* NOTHING */) {
+		rc = vm_run(&vm, 0);
+		if (rc != 0)
+			break;
+
+		if (vm.vcpu[0]->exit_reason == KVM_EXIT_HLT)
+			break;
+
+		if (vm.vcpu[0]->exit_reason == KVM_EXIT_IO &&
+		    vm.vcpu[0]->io.port == 0x3f8 &&
+		    vm.vcpu[0]->io.direction == KVM_EXIT_IO_OUT &&
+		    vm.vcpu[0]->io.size == 1 &&
+		    vm.vcpu[0]->io.count == 1)
+		{
+			fputc(((const char *) vm.vcpu[0])[vm.vcpu[0]->io.data_offset], stdout);
+		}
+	}
 
 	ret = EXIT_SUCCESS;
 
