@@ -1,5 +1,3 @@
-/* vim: set nolist noexpandtab ts=8 sw=8 sts=8: */
-
 #include <assert.h>
 #include <errno.h>
 #include <stdint.h>
@@ -17,7 +15,11 @@
 
 #include <linux/kvm.h>
 
-#include "unrestricted_guest.bin.h"
+#ifdef UNRESTRICTED_GUEST
+# include "unrestricted_guest.bin.h"
+#else /* UNRESTRICTED_GUEST */
+# include "protected_guest.bin.h"
+#endif /* UNRESTRICTED_GUEST */
 
 /** Path to KVM subsystem device file */
 #define KVM_PATH "/dev/kvm"
@@ -42,6 +44,8 @@ static int  vm_create_vcpu(struct vm *);
 static int  vm_attach_memory(struct vm *, uintptr_t, size_t, void *);
 static int  vm_get_regs(struct vm *, unsigned, struct kvm_regs *);
 static int  vm_set_regs(struct vm *, unsigned, const struct kvm_regs *);
+static int  vm_get_sregs(struct vm *, unsigned, struct kvm_sregs *);
+static int  vm_set_sregs(struct vm *, unsigned, const struct kvm_sregs *);
 static int  vm_run(struct vm *, unsigned);
 static void vm_destroy(struct vm *);
 
@@ -200,6 +204,44 @@ int vm_set_regs(struct vm *vm, unsigned vcpu, const struct kvm_regs *regs)
 }
 
 /**
+ * Read special registers from a virtual CPU
+ *
+ * @param vm   virtual machine descriptor
+ * @param vcpu virtual CPU identifier
+ * @param regs special registers
+ *
+ * @return zero on success, or -1 if an error occured
+ */
+int vm_get_sregs(struct vm *vm, unsigned vcpu, struct kvm_sregs *regs)
+{
+	assert(vm != NULL);
+	assert(vm->num_vcpus > vcpu);
+	assert(vm->vcpu_fd[vcpu] > 0);
+	assert(regs != NULL);
+
+	return ioctl(vm->vcpu_fd[vcpu], KVM_GET_SREGS, regs);
+}
+
+/**
+ * Write special registers into a virtual CPU
+ *
+ * @param vm   virtual machine descriptor
+ * @param vcpu virtual CPU identifier
+ * @param regs special registers
+ *
+ * @return zero on success, or -1 if an error occured
+ */
+int vm_set_sregs(struct vm *vm, unsigned vcpu, const struct kvm_sregs *regs)
+{
+	assert(vm != NULL);
+	assert(vm->num_vcpus > vcpu);
+	assert(vm->vcpu_fd[vcpu] > 0);
+	assert(regs != NULL);
+
+	return ioctl(vm->vcpu_fd[vcpu], KVM_SET_SREGS, regs);
+}
+
+/**
  * Run a virtual CPU of a virtual machine
  *
  * @param vm   virtual machine descriptor
@@ -247,6 +289,9 @@ int main(int argc, const char *argv[])
 	struct vm vm;
 	void *guestmem;
 	struct kvm_regs regs;
+#ifndef UNRESTRICTED_GUEST
+	struct kvm_sregs sregs;
+#endif /* UNRESTRICTED_GUEST */
 	int ret = EXIT_FAILURE;
 
 	kvm = kvm_open(KVM_PATH);
@@ -275,23 +320,42 @@ int main(int argc, const char *argv[])
 	if (vm_set_regs(&vm, 0, &regs) != 0)
 		goto out_guestmem;
 
+#ifdef UNRESTRICTED_GUEST
 	memcpy(guestmem, unrestricted_guest_bin, unrestricted_guest_bin_len);
+#else /* UNRESTRICTED_GUEST */
+	memcpy(guestmem, protected_guest_bin, protected_guest_bin_len);
+
+	if (vm_get_sregs(&vm, 0, &sregs) != 0)
+		goto out_guestmem;
+
+	sregs.cs.base  = sregs.ss.base  = sregs.ds.base  = 0x0;
+	sregs.cs.limit = sregs.ss.limit = sregs.ds.limit = 0xffffffff;
+	sregs.cs.g     = sregs.ss.g     = sregs.ds.g     = 1;
+	sregs.cs.db    = sregs.ss.db                     = 1;
+
+	sregs.cr0 |= 1;
+
+	if (vm_set_sregs(&vm, 0, &sregs) != 0)
+		goto out_guestmem;
+#endif /* UNRESTRICTED_GUEST */
 
 	for (/* NOTHING */; /* NOTHING */; /* NOTHING */) {
+		struct kvm_run *vcpu = vm.vcpu[0];
+
 		rc = vm_run(&vm, 0);
 		if (rc != 0)
 			break;
 
-		if (vm.vcpu[0]->exit_reason == KVM_EXIT_HLT)
+		if (vcpu->exit_reason == KVM_EXIT_HLT)
 			break;
 
-		if (vm.vcpu[0]->exit_reason == KVM_EXIT_IO &&
-		    vm.vcpu[0]->io.port == 0x3f8 &&
-		    vm.vcpu[0]->io.direction == KVM_EXIT_IO_OUT &&
-		    vm.vcpu[0]->io.size == 1 &&
-		    vm.vcpu[0]->io.count == 1)
+		if (vcpu->exit_reason == KVM_EXIT_IO &&
+		    vcpu->io.port == 0x3f8 &&
+		    vcpu->io.direction == KVM_EXIT_IO_OUT)
 		{
-			fputc(((const char *) vm.vcpu[0])[vm.vcpu[0]->io.data_offset], stdout);
+			write(STDOUT_FILENO,
+			      (const void *) vcpu + vcpu->io.data_offset,
+			      vcpu->io.size * vcpu->io.count);
 		}
 	}
 

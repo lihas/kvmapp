@@ -1,9 +1,9 @@
-.code16
+.code32
 entry:
   cld
   movw  $0x3f8, %dx
-  movw  $message, %si
-  movw  message_size, %cx
+  movl  $message, %esi
+  movl  message_size, %ecx
 
 print:
   lodsb
@@ -14,5 +14,5 @@ halt:
   hlt
   jmp   halt
 
-message:      .ascii "Hello unrestricted KVMAPP!\n"
+message:      .ascii "Hello protected KVMAPP!\n"
 message_size: .word  . - message

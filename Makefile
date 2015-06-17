@@ -9,15 +9,22 @@ LDFLAGS = -g
 SRCS = kvmapp.c
 OBJS = $(SRCS:.c=.o)
 
+GUESTS_OBJS = $(GUESTS:.S=.o)
+GUESTS_BINS = $(GUESTS:.S=.bin)
+GUESTS_HS   = $(GUESTS:.S=.bin.h)
+GUESTS =                                                                     \
+  unrestricted_guest.S                                                       \
+  protected_guest.S
+
 kvmapp: $(OBJS)
 	$(LD) $(LDFLAGS) -o $@ $^
 
-kvmapp.o: unrestricted_guest.bin.h
+kvmapp.o: $(GUESTS_HS)
 
-unrestricted_guest.bin.h: unrestricted_guest.bin
+%.bin.h: %.bin
 	xxd -i $< $@
 
-unrestricted_guest.bin: unrestricted_guest.o
+%.bin: %.o
 	objcopy -O binary $< $@
 
 %.o: %.c
@@ -28,4 +35,4 @@ unrestricted_guest.bin: unrestricted_guest.o
 
 .PHONY: clean
 clean:
-	@rm -f kvmapp unrestricted_guest.o unrestricted_guest.bin unrestricted_guest.bin.h $(OBJS)
+	@rm -f kvmapp $(GUESTS_OBJS) $(GUESTS_BINS) $(GUESTS_HS) $(OBJS)
