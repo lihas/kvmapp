@@ -15,12 +15,6 @@
 
 #include <linux/kvm.h>
 
-#ifdef UNRESTRICTED_GUEST
-# include "unrestricted_guest.bin.h"
-#else /* UNRESTRICTED_GUEST */
-# include "protected_guest.bin.h"
-#endif /* UNRESTRICTED_GUEST */
-
 /** Path to KVM subsystem device file */
 #define KVM_PATH "/dev/kvm"
 
@@ -280,6 +274,16 @@ void vm_destroy(struct vm *vm)
 		close(vm->vm_fd);
 }
 
+/* #define UNRESTRICTED_GUEST */
+#define PROTECTED_GUEST
+#define PAGED_GUEST
+
+#ifdef UNRESTRICTED_GUEST
+# include "unrestricted_guest.bin.h"
+#elif defined(PROTECTED_GUEST)
+# include "protected_guest.bin.h"
+#endif
+
 int main(int argc, const char *argv[])
 {
 	static const size_t num_bytes = 0x100000;
@@ -289,9 +293,6 @@ int main(int argc, const char *argv[])
 	struct vm vm;
 	void *guestmem;
 	struct kvm_regs regs;
-#ifndef UNRESTRICTED_GUEST
-	struct kvm_sregs sregs;
-#endif /* UNRESTRICTED_GUEST */
 	int ret = EXIT_FAILURE;
 
 	kvm = kvm_open(KVM_PATH);
@@ -316,13 +317,15 @@ int main(int argc, const char *argv[])
 		goto out_guestmem;
 
 	regs.rflags = 0x2;
-	regs.rip = 0;
+	regs.rip = 0x0;
 	if (vm_set_regs(&vm, 0, &regs) != 0)
 		goto out_guestmem;
 
 #ifdef UNRESTRICTED_GUEST
 	memcpy(guestmem, unrestricted_guest_bin, unrestricted_guest_bin_len);
 #else /* UNRESTRICTED_GUEST */
+	struct kvm_sregs sregs;
+
 	memcpy(guestmem, protected_guest_bin, protected_guest_bin_len);
 
 	if (vm_get_sregs(&vm, 0, &sregs) != 0)
@@ -333,11 +336,21 @@ int main(int argc, const char *argv[])
 	sregs.cs.g     = sregs.ss.g     = sregs.ds.g     = 1;
 	sregs.cs.db    = sregs.ss.db                     = 1;
 
-	sregs.cr0 |= 1;
+	sregs.cr0 |= 1; /* enabled protected mode */
+
+#ifdef PAGED_GUEST
+	sregs.cr0 |= 1UL << 31; /* enable paged mode */
+	sregs.cr4 |= 1UL << 4;  /* enable page size extension */
+	sregs.cr3 = 0x1000;
+
+	uint32_t *pdir = guestmem + 0x1000;
+	for (int i = 0; i < 1024; i++)
+		pdir[i] = (i << 22) | 0x87;
+#endif
 
 	if (vm_set_sregs(&vm, 0, &sregs) != 0)
 		goto out_guestmem;
-#endif /* UNRESTRICTED_GUEST */
+#endif
 
 	for (/* NOTHING */; /* NOTHING */; /* NOTHING */) {
 		struct kvm_run *vcpu = vm.vcpu[0];
