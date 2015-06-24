@@ -265,7 +265,7 @@ int vm_run(struct vm *vm, unsigned vcpu)
  */
 void vm_destroy(struct vm *vm)
 {
-	int i;
+	unsigned i;
 
 	assert(vm != NULL);
 
@@ -294,12 +294,14 @@ int main(int argc, const char *argv[])
 {
 	static const size_t num_bytes = 0x100000;
 
-	int rc;
-	int kvm;
+	int i, rc, kvm;
 	struct vm vm;
 	void *guestmem;
 	struct kvm_regs regs;
 	int ret = EXIT_FAILURE;
+
+	(void) argc;
+	(void) argv;
 
 	kvm = kvm_open(KVM_PATH);
 	if (kvm < 0)
@@ -350,8 +352,10 @@ int main(int argc, const char *argv[])
 	sregs.cr3 = 0x1000;
 
 	uint32_t *pdir = guestmem + 0x1000;
-	for (int i = 0; i < 1024; i++)
+	for (i = 0; i < 1024; i++)
 		pdir[i] = (i << 22) | 0x87;
+#else
+	(void) i;
 #endif
 
 	if (vm_set_sregs(&vm, 0, &sregs) != 0)
