@@ -15,20 +15,26 @@
 
 #include <linux/kvm.h>
 
-/** Path to KVM subsystem device file */
-#define KVM_PATH "/dev/kvm"
+#define KVM_PATH "/dev/kvm" /* default path to KVM subsystem device file */
+#define MAX_VCPUS 4         /* maximum number of virtual CPUs */
 
-/** Maximum number of virtual CPUs */
-#define MAX_VCPUS 4
-
-/** Virtual machine structure */
+/**
+ * struct vm - virtual machine structure
+ *
+ * @vm_fd:          virtual machine file descriptor
+ * @num_vcpus:      number of virtual CPUs
+ * @vcpu_mmap_size: size of shared virtual CPU region
+ * @vcpu_fd:        virtual CPU file descriptors
+ * @vcpu:           mmaped virtual CPU shared regions
+ * @num_mem_slots:  number of attached memory slots
+ */
 struct vm {
-	int vm_fd;                       /**< virtual machine descriptor */
-	unsigned num_vcpus;              /**< number of virtual CPUs */
-	unsigned vcpu_mmap_size;         /**< size of shared vCPU region */
-	int vcpu_fd[MAX_VCPUS];          /**< vCPU file descriptors */
-	struct kvm_run *vcpu[MAX_VCPUS]; /**< vCPU kvm_run structures */
-	unsigned num_mem_slots;          /**< number of attached mem slots */
+	int vm_fd;
+	unsigned num_vcpus;
+	unsigned vcpu_mmap_size;
+	int vcpu_fd[MAX_VCPUS];
+	struct kvm_run *vcpu[MAX_VCPUS];
+	unsigned num_mem_slots;
 };
 
 static int  kvm_open(const char *);
@@ -44,11 +50,11 @@ static int  vm_run(struct vm *, unsigned);
 static void vm_destroy(struct vm *);
 
 /**
- * Obtain a handle to KVM subsystem
+ * kvm_open() - obtain a handle to KVM subsystem
  *
- * @param path path to KVM subsystem device file
+ * @path: path to KVM subsystem device file
  *
- * @return KVM subsystem handle, or -1 if an error occured
+ * Return: KVM subsystem handle, or -1 if an error occured
  */
 int kvm_open(const char *path)
 {
@@ -66,12 +72,12 @@ int kvm_open(const char *path)
 }
 
 /**
- * Create a virtual machine
+ * vm_create() - create a virtual machine
  *
- * @param kvm KVM subsystem handle
- * @param vm  virtual machine descriptor
+ * @kvm: KVM subsystem handle
+ * @vm:  virtual machine descriptor
  *
- * @return zero on success, or -1 if an error occured
+ * Return: zero on success, or -1 if an error occured
  */
 int vm_create(int kvm, struct vm *vm)
 {
@@ -95,11 +101,11 @@ int vm_create(int kvm, struct vm *vm)
 }
 
 /**
- * Create a new virtual CPU for a virtual machine
+ * vm_create_vcpu() - create a new virtual CPU for a virtual machine
  *
- * @param vm virtual machine descriptor
+ * @vm: virtual machine descriptor
  *
- * @return ID of created virtual CPU, or -1 if an error occured
+ * Return: ID of created virtual CPU, or -1 if an error occured
  */
 int vm_create_vcpu(struct vm *vm)
 {
@@ -129,14 +135,14 @@ int vm_create_vcpu(struct vm *vm)
 }
 
 /**
- * Attach a memory region to a virtual machine
+ * vm_attach_memory() - attach a memory region to a virtual machine
  *
- * @param vm   virtual machine descriptor
- * @param gpa  guest physical address
- * @param size memory region size
- * @param addr start of host addressable memory region
+ * @vm:   virtual machine descriptor
+ * @gpa:  guest physical address
+ * @size: memory region size
+ * @addr: start of host addressable memory region
  *
- * @return ID of created memory region, or -1 if an error occured
+ * Return: ID of created memory region, or -1 if an error occured
  */
 int vm_attach_memory(struct vm *vm, uintptr_t gpa, size_t size, void *addr)
 {
@@ -160,13 +166,13 @@ int vm_attach_memory(struct vm *vm, uintptr_t gpa, size_t size, void *addr)
 }
 
 /**
- * Read general purpose registers from a virtual CPU
+ * vm_get_regs() - read general purpose registers from a virtual CPU
  *
- * @param vm   virtual machine descriptor
- * @param vcpu virtual CPU identifier
- * @param regs general purpose registers
+ * @vm:   virtual machine descriptor
+ * @vcpu: virtual CPU identifier
+ * @regs: general purpose registers
  *
- * @return zero on success, or -1 if an error occured
+ * Return: zero on success, or -1 if an error occured
  */
 int vm_get_regs(struct vm *vm, unsigned vcpu, struct kvm_regs *regs)
 {
@@ -179,13 +185,13 @@ int vm_get_regs(struct vm *vm, unsigned vcpu, struct kvm_regs *regs)
 }
 
 /**
- * Write general purpose registers into a virtual CPU
+ * vm_set_regs() - write general purpose registers into a virtual CPU
  *
- * @param vm   virtual machine descriptor
- * @param vcpu virtual CPU identifier
- * @param regs general purpose registers
+ * @vm:   virtual machine descriptor
+ * @vcpu: virtual CPU identifier
+ * @regs: general purpose registers
  *
- * @return zero on success, or -1 if an error occured
+ * Return: zero on success, or -1 if an error occured
  */
 int vm_set_regs(struct vm *vm, unsigned vcpu, const struct kvm_regs *regs)
 {
@@ -198,13 +204,13 @@ int vm_set_regs(struct vm *vm, unsigned vcpu, const struct kvm_regs *regs)
 }
 
 /**
- * Read special registers from a virtual CPU
+ * vm_get_sregs() - read special registers from a virtual CPU
  *
- * @param vm   virtual machine descriptor
- * @param vcpu virtual CPU identifier
- * @param regs special registers
+ * @vm:   virtual machine descriptor
+ * @vcpu: virtual CPU identifier
+ * @regs: special registers
  *
- * @return zero on success, or -1 if an error occured
+ * Return: zero on success, or -1 if an error occured
  */
 int vm_get_sregs(struct vm *vm, unsigned vcpu, struct kvm_sregs *regs)
 {
@@ -217,13 +223,13 @@ int vm_get_sregs(struct vm *vm, unsigned vcpu, struct kvm_sregs *regs)
 }
 
 /**
- * Write special registers into a virtual CPU
+ * vm_set_sregs() - write special registers into a virtual CPU
  *
- * @param vm   virtual machine descriptor
- * @param vcpu virtual CPU identifier
- * @param regs special registers
+ * @vm:   virtual machine descriptor
+ * @vcpu: virtual CPU identifier
+ * @regs: special registers
  *
- * @return zero on success, or -1 if an error occured
+ * Return: zero on success, or -1 if an error occured
  */
 int vm_set_sregs(struct vm *vm, unsigned vcpu, const struct kvm_sregs *regs)
 {
@@ -236,12 +242,12 @@ int vm_set_sregs(struct vm *vm, unsigned vcpu, const struct kvm_sregs *regs)
 }
 
 /**
- * Run a virtual CPU of a virtual machine
+ * vm_run() - run a virtual CPU of a virtual machine
  *
- * @param vm   virtual machine descriptor
- * @param vcpu virtua CPU identifier
+ * @vm:   virtual machine descriptor
+ * @vcpu: virtua CPU identifier
  *
- * @return zero on success, or -1 if an error occured
+ * Return: zero on success, or -1 if an error occured
  */
 int vm_run(struct vm *vm, unsigned vcpu)
 {
@@ -253,9 +259,9 @@ int vm_run(struct vm *vm, unsigned vcpu)
 }
 
 /**
- * Destroy a virtual machine
+ * vm_destroy() - destroy a virtual machine
  *
- * @param vm virtual machine descriptor
+ * @vm: virtual machine descriptor
  */
 void vm_destroy(struct vm *vm)
 {
