@@ -6,7 +6,7 @@ CFLAGS  = -Wall -Werror -Wextra -O0 -g
 ASFLAGS = -m32
 LDFLAGS = -g
 
-SRCS = kvmapp.c
+SRCS = kvmapp.c vm.c
 OBJS = $(SRCS:.c=.o)
 
 GUESTS_OBJS = $(GUESTS:.S=.o)
