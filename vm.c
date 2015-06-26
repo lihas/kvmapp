@@ -11,7 +11,10 @@
 
 #include "vm.h"
 
-#define MAX_VCPUS 4 /* maximum number of virtual CPUs */
+enum {
+	MAX_VCPUS    = 4, /* maximum number of virtual CPUs */
+	MAX_MEMSLOTS = 8, /* maximum number of memory slots */
+};
 
 /**
  * struct vm - virtual machine structure
@@ -30,6 +33,7 @@ struct vm {
 	int vcpu_fd[MAX_VCPUS];
 	struct kvm_run *vcpu[MAX_VCPUS];
 	unsigned num_mem_slots;
+	struct kvm_userspace_memory_region mem_slot[MAX_MEMSLOTS];
 };
 
 /**
@@ -108,23 +112,51 @@ int vm_create_vcpu(struct vm *vm)
  */
 int vm_attach_memory(struct vm *vm, uintptr_t gpa, size_t size, void *addr)
 {
-	struct kvm_userspace_memory_region mem;
-
 	assert(vm != NULL);
 	assert(vm->vm_fd > 0);
 	assert(size > 0 && size % PAGE_SIZE == 0);
 	assert(addr != NULL);
 
-	mem.slot = vm->num_mem_slots;
-	mem.flags = 0; /* read/write */
-	mem.guest_phys_addr = gpa;
-	mem.memory_size = size;
-	mem.userspace_addr = (uintptr_t) addr;
+	if (vm->num_mem_slots < MAX_MEMSLOTS) {
+		struct kvm_userspace_memory_region *mem =
+		    &vm->mem_slot[vm->num_mem_slots];
 
-	if (ioctl(vm->vm_fd, KVM_SET_USER_MEMORY_REGION, &mem) == 0)
-		return vm->num_mem_slots++;
+		mem->slot = vm->num_mem_slots;
+		mem->flags = 0; /* read/write */
+		mem->guest_phys_addr = gpa;
+		mem->memory_size = size;
+		mem->userspace_addr = (uintptr_t) addr;
+
+		if (ioctl(vm->vm_fd, KVM_SET_USER_MEMORY_REGION, mem) == 0)
+			return vm->num_mem_slots++;
+	}
 
 	return -1;
+}
+
+/**
+ * vm_get_memory() - get memory region from a virtual machine
+ *
+ * @vm:   virtual machine descriptor
+ * @gpa:  guest physical address
+ * @size: memory region size
+ *
+ * Return: start of host addressable memory region, or NULL on failure
+ */
+void *vm_get_memory(struct vm *vm, uintptr_t gpa, size_t size)
+{
+	struct kvm_userspace_memory_region *mem;
+	unsigned i;
+
+	assert(vm != NULL);
+
+	mem = vm->mem_slot;
+	for (i = 0; i < vm->num_mem_slots; i++, mem++)
+		if (mem->guest_phys_addr <= gpa &&
+		    mem->guest_phys_addr + mem->memory_size >= gpa + size)
+			return (void *) mem->userspace_addr;
+
+	return NULL;
 }
 
 /**
