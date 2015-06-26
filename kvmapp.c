@@ -44,9 +44,9 @@ int kvm_open(const char *path)
 #define PAGED_GUEST
 
 #ifdef UNRESTRICTED_GUEST
-# include "unrestricted_guest.bin.h"
+# include "guest/unrestricted_guest.bin.h"
 #elif defined(PROTECTED_GUEST)
-# include "protected_guest.bin.h"
+# include "guest/protected_guest.bin.h"
 #endif
 
 int main(int argc, const char *argv[])
@@ -90,11 +90,11 @@ int main(int argc, const char *argv[])
 		goto out_guestmem;
 
 #ifdef UNRESTRICTED_GUEST
-	memcpy(guestmem, unrestricted_guest_bin, unrestricted_guest_bin_len);
+	memcpy(guestmem, guest_unrestricted_guest_bin, guest_unrestricted_guest_bin_len);
 #else /* UNRESTRICTED_GUEST */
 	struct kvm_sregs sregs;
 
-	memcpy(guestmem, protected_guest_bin, protected_guest_bin_len);
+	memcpy(guestmem, guest_protected_guest_bin, guest_protected_guest_bin_len);
 
 	if (vm_get_sregs(vm, 0, &sregs) != 0)
 		goto out_guestmem;

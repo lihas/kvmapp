@@ -13,8 +13,8 @@ GUESTS_OBJS = $(GUESTS:.S=.o)
 GUESTS_BINS = $(GUESTS:.S=.bin)
 GUESTS_HS   = $(GUESTS:.S=.bin.h)
 GUESTS =                                                                     \
-  unrestricted_guest.S                                                       \
-  protected_guest.S
+  guest/unrestricted_guest.S                                                 \
+  guest/protected_guest.S
 
 kvmapp: $(OBJS)
 	$(LD) $(LDFLAGS) -o $@ $^
