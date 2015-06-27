@@ -11,6 +11,7 @@
 
 #include <linux/kvm.h>
 
+#include "loader/binary.h"
 #include "vm.h"
 
 #define KVM_PATH "/dev/kvm" /* default path to KVM subsystem device file */
@@ -39,24 +40,13 @@ int kvm_open(const char *path)
 	return fd;
 }
 
-/* #define UNRESTRICTED_GUEST */
-#define PROTECTED_GUEST
-#define PAGED_GUEST
-
-#ifdef UNRESTRICTED_GUEST
-# include "guest/unrestricted_guest.bin.h"
-#elif defined(PROTECTED_GUEST)
-# include "guest/protected_guest.bin.h"
-#endif
-
 int main(int argc, const char *argv[])
 {
 	static const size_t num_bytes = 0x100000;
 
-	int i, rc, kvm;
+	int rc, kvm;
 	struct vm *vm;
 	void *guestmem;
-	struct kvm_regs regs;
 	int ret = EXIT_FAILURE;
 
 	(void) argc;
@@ -81,46 +71,10 @@ int main(int argc, const char *argv[])
 	if (vm_attach_memory(vm, 0x0, num_bytes, guestmem) < 0)
 		goto out_guestmem;
 
-	if (vm_get_regs(vm, 0, &regs) != 0)
+	rc = binary_load(vm, "guest/protected_guest.bin", 0,
+			 BINARY_LOAD_PROTECTED | BINARY_LOAD_PAGED);
+	if (rc != 0)
 		goto out_guestmem;
-
-	regs.rflags = 0x2;
-	regs.rip = 0x0;
-	if (vm_set_regs(vm, 0, &regs) != 0)
-		goto out_guestmem;
-
-#ifdef UNRESTRICTED_GUEST
-	memcpy(guestmem, guest_unrestricted_guest_bin, guest_unrestricted_guest_bin_len);
-#else /* UNRESTRICTED_GUEST */
-	struct kvm_sregs sregs;
-
-	memcpy(guestmem, guest_protected_guest_bin, guest_protected_guest_bin_len);
-
-	if (vm_get_sregs(vm, 0, &sregs) != 0)
-		goto out_guestmem;
-
-	sregs.cs.base  = sregs.ss.base  = sregs.ds.base  = 0x0;
-	sregs.cs.limit = sregs.ss.limit = sregs.ds.limit = 0xffffffff;
-	sregs.cs.g     = sregs.ss.g     = sregs.ds.g     = 1;
-	sregs.cs.db    = sregs.ss.db                     = 1;
-
-	sregs.cr0 |= 1; /* enabled protected mode */
-
-#ifdef PAGED_GUEST
-	sregs.cr0 |= 1UL << 31; /* enable paged mode */
-	sregs.cr4 |= 1UL << 4;  /* enable page size extension */
-	sregs.cr3 = 0x1000;
-
-	uint32_t *pdir = guestmem + 0x1000;
-	for (i = 0; i < 1024; i++)
-		pdir[i] = (i << 22) | 0x87;
-#else
-	(void) i;
-#endif
-
-	if (vm_set_sregs(vm, 0, &sregs) != 0)
-		goto out_guestmem;
-#endif
 
 	for (/* NOTHING */; /* NOTHING */; /* NOTHING */) {
 		struct kvm_run *vcpu = vm_get_vcpu(vm, 0);

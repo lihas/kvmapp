@@ -67,37 +67,27 @@ struct vm *vm_create(int kvm)
 }
 
 /**
- * vm_create_vcpu() - create a new virtual CPU for a virtual machine
+ * vm_destroy() - destroy a virtual machine
  *
  * @vm: virtual machine descriptor
- *
- * Return: ID of created virtual CPU, or -1 if an error occured
  */
-int vm_create_vcpu(struct vm *vm)
+void vm_destroy(struct vm *vm)
 {
-	int ret = -1;
-	int i;
+	unsigned i;
 
 	assert(vm != NULL);
-	assert(vm->vm_fd > 0);
 
-	i = vm->num_vcpus;
-	if (i < MAX_VCPUS) {
-		vm->vcpu_fd[i] = ioctl(vm->vm_fd, KVM_CREATE_VCPU, i);
-		if (vm->vcpu_fd[i] > 0) {
-			vm->vcpu[i] = mmap(0, vm->vcpu_mmap_size,
-					   PROT_READ | PROT_WRITE,
-					   MAP_PRIVATE, vm->vcpu_fd[i], 0);
-			if (vm->vcpu[i] != NULL)
-				ret = vm->num_vcpus++;
-			else {
-				close(vm->vcpu_fd[i]);
-				vm->vcpu_fd[i] = 0;
-			}
-		}
+	for (i = 0; i < vm->num_vcpus; i++) {
+		if (vm->vcpu_fd[i] > 0)
+			close(vm->vcpu_fd[i]);
+		if (vm->vcpu[i] != NULL)
+			munmap(vm->vcpu[i], vm->vcpu_mmap_size);
 	}
 
-	return ret;
+	if (vm->vm_fd > 0)
+		close(vm->vm_fd);
+
+	free(vm);
 }
 
 /**
@@ -154,9 +144,44 @@ void *vm_get_memory(struct vm *vm, uintptr_t gpa, size_t size)
 	for (i = 0; i < vm->num_mem_slots; i++, mem++)
 		if (mem->guest_phys_addr <= gpa &&
 		    mem->guest_phys_addr + mem->memory_size >= gpa + size)
-			return (void *) mem->userspace_addr;
+			return (void *) mem->userspace_addr +
+			    (gpa - mem->guest_phys_addr);
 
 	return NULL;
+}
+
+/**
+ * vm_create_vcpu() - create a new virtual CPU for a virtual machine
+ *
+ * @vm: virtual machine descriptor
+ *
+ * Return: ID of created virtual CPU, or -1 if an error occured
+ */
+int vm_create_vcpu(struct vm *vm)
+{
+	int ret = -1;
+	int i;
+
+	assert(vm != NULL);
+	assert(vm->vm_fd > 0);
+
+	i = vm->num_vcpus;
+	if (i < MAX_VCPUS) {
+		vm->vcpu_fd[i] = ioctl(vm->vm_fd, KVM_CREATE_VCPU, i);
+		if (vm->vcpu_fd[i] > 0) {
+			vm->vcpu[i] = mmap(0, vm->vcpu_mmap_size,
+					   PROT_READ | PROT_WRITE,
+					   MAP_PRIVATE, vm->vcpu_fd[i], 0);
+			if (vm->vcpu[i] != NULL)
+				ret = vm->num_vcpus++;
+			else {
+				close(vm->vcpu_fd[i]);
+				vm->vcpu_fd[i] = 0;
+			}
+		}
+	}
+
+	return ret;
 }
 
 /**
@@ -267,28 +292,4 @@ int vm_run(struct vm *vm, unsigned vcpu)
 	assert(vm->vcpu_fd[vcpu] > 0);
 
 	return ioctl(vm->vcpu_fd[vcpu], KVM_RUN, 0);
-}
-
-/**
- * vm_destroy() - destroy a virtual machine
- *
- * @vm: virtual machine descriptor
- */
-void vm_destroy(struct vm *vm)
-{
-	unsigned i;
-
-	assert(vm != NULL);
-
-	for (i = 0; i < vm->num_vcpus; i++) {
-		if (vm->vcpu_fd[i] > 0)
-			close(vm->vcpu_fd[i]);
-		if (vm->vcpu[i] != NULL)
-			munmap(vm->vcpu[i], vm->vcpu_mmap_size);
-	}
-
-	if (vm->vm_fd > 0)
-		close(vm->vm_fd);
-
-	free(vm);
 }

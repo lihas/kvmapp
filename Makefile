@@ -2,27 +2,25 @@ CC = gcc
 AS = gcc
 LD = gcc
 
-CFLAGS  = -Wall -Werror -Wextra -O0 -g
+CFLAGS  = -Wall -Werror -Wextra -O0 -g -I.
 ASFLAGS = -m32
 LDFLAGS = -g
 
-SRCS = kvmapp.c vm.c
 OBJS = $(SRCS:.c=.o)
+SRCS =                                                                       \
+  kvmapp.c                                                                   \
+  loader/binary.c                                                            \
+  vcpu.c                                                                     \
+  vm.c
 
 GUESTS_OBJS = $(GUESTS:.S=.o)
 GUESTS_BINS = $(GUESTS:.S=.bin)
-GUESTS_HS   = $(GUESTS:.S=.bin.h)
 GUESTS =                                                                     \
   guest/unrestricted_guest.S                                                 \
   guest/protected_guest.S
 
-kvmapp: $(OBJS)
-	$(LD) $(LDFLAGS) -o $@ $^
-
-kvmapp.o: $(GUESTS_HS)
-
-%.bin.h: %.bin
-	xxd -i $< $@
+kvmapp: $(OBJS) $(GUESTS_BINS)
+	$(LD) $(LDFLAGS) -o $@ $(OBJS)
 
 %.bin: %.o
 	objcopy -O binary $< $@
@@ -35,4 +33,4 @@ kvmapp.o: $(GUESTS_HS)
 
 .PHONY: clean
 clean:
-	@rm -f kvmapp $(GUESTS_OBJS) $(GUESTS_BINS) $(GUESTS_HS) $(OBJS)
+	@rm -f kvmapp $(GUESTS_OBJS) $(GUESTS_BINS) $(OBJS)
