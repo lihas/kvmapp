@@ -9,9 +9,9 @@
 #include <linux/kvm.h>
 
 #include "binary.h"
+#include "kvm.h"
 #include "kvmapp.h"
 #include "vcpu.h"
-#include "vm.h"
 
 /**
  * load_image() - load binary file into a virtual machine

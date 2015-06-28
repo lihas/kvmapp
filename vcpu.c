@@ -2,8 +2,8 @@
 
 #include <linux/kvm.h>
 
+#include "kvm.h"
 #include "vcpu.h"
-#include "vm.h"
 
 /**
  * vcpu_init() - perform common initialization of a virtual CPU
@@ -18,13 +18,13 @@ int vcpu_init(struct vm *vm, unsigned vcpu, uintptr_t entry)
 {
 	struct kvm_regs regs;
 
-	if (vm_get_regs(vm, vcpu, &regs) != 0)
+	if (vcpu_get_regs(vm, vcpu, &regs) != 0)
 		return -1;
 
 	regs.rflags = 0x2;
 	regs.rip = entry;
 
-	if (vm_set_regs(vm, vcpu, &regs) != 0)
+	if (vcpu_set_regs(vm, vcpu, &regs) != 0)
 		return -1;
 
 	return 0;
@@ -42,7 +42,7 @@ int vcpu_enable_protected_mode(struct vm *vm, unsigned vcpu)
 {
 	struct kvm_sregs sregs;
 
-	if (vm_get_sregs(vm, vcpu, &sregs) != 0)
+	if (vcpu_get_sregs(vm, vcpu, &sregs) != 0)
 		return -1;
 
 	sregs.cs.base  = sregs.ss.base  = sregs.ds.base  = 0x0;
@@ -52,7 +52,7 @@ int vcpu_enable_protected_mode(struct vm *vm, unsigned vcpu)
 
 	sregs.cr0 |= 1; /* enable protected mode */
 
-	if (vm_set_sregs(vm, vcpu, &sregs) != 0)
+	if (vcpu_set_sregs(vm, vcpu, &sregs) != 0)
 		return -1;
 
 	return 0;
@@ -73,7 +73,7 @@ int vcpu_enable_paged_mode(struct vm *vm, unsigned vcpu, uintptr_t pdir)
 	uint32_t *pd;
 	int i;
 
-	if (vm_get_sregs(vm, vcpu, &sregs) != 0)
+	if (vcpu_get_sregs(vm, vcpu, &sregs) != 0)
 		return -1;
 
 	sregs.cr0 |= 1UL << 31; /* enable paged mode */
@@ -87,7 +87,7 @@ int vcpu_enable_paged_mode(struct vm *vm, unsigned vcpu, uintptr_t pdir)
 	for (i = 0; i < 1024; i++)
 		pd[i] = (i << 22) | 0x87;
 
-	if (vm_set_sregs(vm, vcpu, &sregs) != 0)
+	if (vcpu_set_sregs(vm, vcpu, &sregs) != 0)
 		return -1;
 
 	return 0;

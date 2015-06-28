@@ -1,44 +1,20 @@
-#include <assert.h>
+/* #include <assert.h> */
 #include <stdlib.h>
-#include <string.h>
+/* #include <string.h> */
 
-#include <fcntl.h>
-#include <sys/ioctl.h>
+/* #include <fcntl.h> */
+/* #include <sys/ioctl.h> */
 #include <sys/mman.h>
-#include <sys/stat.h>
-#include <sys/types.h>
+/* #include <sys/stat.h> */
+/* #include <sys/types.h> */
 #include <unistd.h>
 
 #include <linux/kvm.h>
 
 #include "loader/binary.h"
-#include "vm.h"
+#include "kvm.h"
 
 #define KVM_PATH "/dev/kvm" /* default path to KVM subsystem device file */
-
-static int kvm_open(const char *);
-
-/**
- * kvm_open() - obtain a handle to KVM subsystem
- *
- * @path: path to KVM subsystem device file
- *
- * Return: KVM subsystem handle, or -1 if an error occured
- */
-int kvm_open(const char *path)
-{
-	int fd;
-
-	assert(path != NULL);
-
-	fd = open(path, O_RDWR);
-	if (fd > 0 && ioctl(fd, KVM_GET_API_VERSION, 0) != KVM_API_VERSION) {
-		close(fd);
-		fd = -1;
-	}
-
-	return fd;
-}
 
 int main(int argc, const char *argv[])
 {
@@ -47,6 +23,7 @@ int main(int argc, const char *argv[])
 	int rc, kvm;
 	struct vm *vm;
 	void *guestmem;
+	struct kvm_run *vcpu;
 	int ret = EXIT_FAILURE;
 
 	(void) argc;
@@ -60,7 +37,7 @@ int main(int argc, const char *argv[])
 	if (vm == NULL)
 		goto out_kvm;
 
-	if (vm_create_vcpu(vm) < 0)
+	if (vcpu_create(vm) < 0)
 		goto out_vm;
 
 	guestmem = mmap(0, num_bytes, PROT_READ | PROT_WRITE,
@@ -76,10 +53,9 @@ int main(int argc, const char *argv[])
 	if (rc != 0)
 		goto out_guestmem;
 
+	vcpu = vcpu_get(vm, 0);
 	for (/* NOTHING */; /* NOTHING */; /* NOTHING */) {
-		struct kvm_run *vcpu = vm_get_vcpu(vm, 0);
-
-		rc = vm_run(vm, 0);
+		rc = vcpu_run(vm, 0);
 		if (rc != 0)
 			break;
 
@@ -105,7 +81,7 @@ out_vm:
 	vm_destroy(vm);
 
 out_kvm:
-	close(kvm);
+	kvm_close(kvm);
 
 out:
 	return ret;

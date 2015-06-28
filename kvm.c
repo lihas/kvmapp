@@ -2,14 +2,17 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <fcntl.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 #include <sys/user.h>
 #include <unistd.h>
 
 #include <linux/kvm.h>
 
-#include "vm.h"
+#include "kvm.h"
 
 enum {
 	MAX_VCPUS    = 4, /* maximum number of virtual CPUs */
@@ -35,6 +38,40 @@ struct vm {
 	unsigned num_mem_slots;
 	struct kvm_userspace_memory_region mem_slot[MAX_MEMSLOTS];
 };
+
+/**
+ * kvm_open() - obtain a handle to KVM subsystem
+ *
+ * @path: path to KVM subsystem device file
+ *
+ * Return: KVM subsystem handle, or -1 if an error occured
+ */
+int kvm_open(const char *path)
+{
+	int fd;
+
+	assert(path != NULL);
+
+	fd = open(path, O_RDWR);
+	if (fd > 0 && ioctl(fd, KVM_GET_API_VERSION, 0) != KVM_API_VERSION) {
+		close(fd);
+		fd = -1;
+	}
+
+	return fd;
+}
+
+/**
+ * kvm_close() - close a handle to KVM subsystem
+ *
+ * @kvm: KVM subsystem handle
+ */
+void kvm_close(int kvm)
+{
+	assert(kvm > 0);
+
+	close(kvm);
+}
 
 /**
  * vm_create() - create a virtual machine
@@ -64,30 +101,6 @@ struct vm *vm_create(int kvm)
 	}
 
 	return NULL;
-}
-
-/**
- * vm_destroy() - destroy a virtual machine
- *
- * @vm: virtual machine descriptor
- */
-void vm_destroy(struct vm *vm)
-{
-	unsigned i;
-
-	assert(vm != NULL);
-
-	for (i = 0; i < vm->num_vcpus; i++) {
-		if (vm->vcpu_fd[i] > 0)
-			close(vm->vcpu_fd[i]);
-		if (vm->vcpu[i] != NULL)
-			munmap(vm->vcpu[i], vm->vcpu_mmap_size);
-	}
-
-	if (vm->vm_fd > 0)
-		close(vm->vm_fd);
-
-	free(vm);
 }
 
 /**
@@ -151,13 +164,37 @@ void *vm_get_memory(struct vm *vm, uintptr_t gpa, size_t size)
 }
 
 /**
- * vm_create_vcpu() - create a new virtual CPU for a virtual machine
+ * vm_destroy() - destroy a virtual machine
+ *
+ * @vm: virtual machine descriptor
+ */
+void vm_destroy(struct vm *vm)
+{
+	unsigned i;
+
+	assert(vm != NULL);
+
+	for (i = 0; i < vm->num_vcpus; i++) {
+		if (vm->vcpu_fd[i] > 0)
+			close(vm->vcpu_fd[i]);
+		if (vm->vcpu[i] != NULL)
+			munmap(vm->vcpu[i], vm->vcpu_mmap_size);
+	}
+
+	if (vm->vm_fd > 0)
+		close(vm->vm_fd);
+
+	free(vm);
+}
+
+/**
+ * vcpu_create() - create a new virtual CPU for a virtual machine
  *
  * @vm: virtual machine descriptor
  *
  * Return: ID of created virtual CPU, or -1 if an error occured
  */
-int vm_create_vcpu(struct vm *vm)
+int vcpu_create(struct vm *vm)
 {
 	int ret = -1;
 	int i;
@@ -185,7 +222,7 @@ int vm_create_vcpu(struct vm *vm)
 }
 
 /**
- * vm_get_regs() - read general purpose registers from a virtual CPU
+ * vcpu_get_regs() - read general purpose registers from a virtual CPU
  *
  * @vm:   virtual machine descriptor
  * @vcpu: virtual CPU identifier
@@ -193,7 +230,7 @@ int vm_create_vcpu(struct vm *vm)
  *
  * Return: zero on success, or -1 if an error occured
  */
-int vm_get_regs(struct vm *vm, unsigned vcpu, struct kvm_regs *regs)
+int vcpu_get_regs(struct vm *vm, unsigned vcpu, struct kvm_regs *regs)
 {
 	assert(vm != NULL);
 	assert(vm->num_vcpus > vcpu);
@@ -204,7 +241,7 @@ int vm_get_regs(struct vm *vm, unsigned vcpu, struct kvm_regs *regs)
 }
 
 /**
- * vm_set_regs() - write general purpose registers into a virtual CPU
+ * vcpu_set_regs() - write general purpose registers into a virtual CPU
  *
  * @vm:   virtual machine descriptor
  * @vcpu: virtual CPU identifier
@@ -212,7 +249,7 @@ int vm_get_regs(struct vm *vm, unsigned vcpu, struct kvm_regs *regs)
  *
  * Return: zero on success, or -1 if an error occured
  */
-int vm_set_regs(struct vm *vm, unsigned vcpu, const struct kvm_regs *regs)
+int vcpu_set_regs(struct vm *vm, unsigned vcpu, const struct kvm_regs *regs)
 {
 	assert(vm != NULL);
 	assert(vm->num_vcpus > vcpu);
@@ -223,7 +260,7 @@ int vm_set_regs(struct vm *vm, unsigned vcpu, const struct kvm_regs *regs)
 }
 
 /**
- * vm_get_sregs() - read special registers from a virtual CPU
+ * vcpu_get_sregs() - read special registers from a virtual CPU
  *
  * @vm:   virtual machine descriptor
  * @vcpu: virtual CPU identifier
@@ -231,7 +268,7 @@ int vm_set_regs(struct vm *vm, unsigned vcpu, const struct kvm_regs *regs)
  *
  * Return: zero on success, or -1 if an error occured
  */
-int vm_get_sregs(struct vm *vm, unsigned vcpu, struct kvm_sregs *regs)
+int vcpu_get_sregs(struct vm *vm, unsigned vcpu, struct kvm_sregs *regs)
 {
 	assert(vm != NULL);
 	assert(vm->num_vcpus > vcpu);
@@ -242,7 +279,7 @@ int vm_get_sregs(struct vm *vm, unsigned vcpu, struct kvm_sregs *regs)
 }
 
 /**
- * vm_set_sregs() - write special registers into a virtual CPU
+ * vcpu_set_sregs() - write special registers into a virtual CPU
  *
  * @vm:   virtual machine descriptor
  * @vcpu: virtual CPU identifier
@@ -250,7 +287,7 @@ int vm_get_sregs(struct vm *vm, unsigned vcpu, struct kvm_sregs *regs)
  *
  * Return: zero on success, or -1 if an error occured
  */
-int vm_set_sregs(struct vm *vm, unsigned vcpu, const struct kvm_sregs *regs)
+int vcpu_set_sregs(struct vm *vm, unsigned vcpu, const struct kvm_sregs *regs)
 {
 	assert(vm != NULL);
 	assert(vm->num_vcpus > vcpu);
@@ -261,14 +298,14 @@ int vm_set_sregs(struct vm *vm, unsigned vcpu, const struct kvm_sregs *regs)
 }
 
 /**
- * vm_get_vcpu() - get virtual CPU parameter block
+ * vcpu_get() - get virtual CPU parameter block
  *
  * @vm: virtual machine descriptor
  * @vcpu: virtual CPU indentifier
  *
  * Return: pointer to virtual CPU parameter block
  */
-struct kvm_run *vm_get_vcpu(struct vm *vm, unsigned vcpu)
+struct kvm_run *vcpu_get(struct vm *vm, unsigned vcpu)
 {
 	assert(vm != NULL);
 	assert(vm->num_vcpus > vcpu);
@@ -278,14 +315,14 @@ struct kvm_run *vm_get_vcpu(struct vm *vm, unsigned vcpu)
 }
 
 /**
- * vm_run() - run a virtual CPU of a virtual machine
+ * vcpu_run() - run a virtual CPU of a virtual machine
  *
  * @vm:   virtual machine descriptor
  * @vcpu: virtua CPU identifier
  *
  * Return: zero on success, or -1 if an error occured
  */
-int vm_run(struct vm *vm, unsigned vcpu)
+int vcpu_run(struct vm *vm, unsigned vcpu)
 {
 	assert(vm != NULL);
 	assert(vm->num_vcpus > vcpu);

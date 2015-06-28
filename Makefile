@@ -8,10 +8,10 @@ LDFLAGS = -g
 
 OBJS = $(SRCS:.c=.o)
 SRCS =                                                                       \
+  kvm.c                                                                      \
   kvmapp.c                                                                   \
   loader/binary.c                                                            \
-  vcpu.c                                                                     \
-  vm.c
+  vcpu.c
 
 GUESTS_OBJS = $(GUESTS:.S=.o)
 GUESTS_BINS = $(GUESTS:.S=.bin)
