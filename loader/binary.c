@@ -56,7 +56,7 @@ static ssize_t load_image(struct vm *vm, const char *path, uintptr_t base)
 int binary_load(struct vm *vm, const char *path, uintptr_t base, int flags)
 {
 	ssize_t image_size;
-	uintptr_t pdir;
+	uintptr_t stack;
 
 	assert(vm != NULL);
 	assert(path != NULL);
@@ -66,18 +66,17 @@ int binary_load(struct vm *vm, const char *path, uintptr_t base, int flags)
 	if (image_size < 0)
 		return -1;
 
-	if (vcpu_init(vm, BOOTSTRAP_VCPU, base) != 0)
+	stack = round_up(base + image_size + PAGE_SIZE, PAGE_SIZE);
+	if (vcpu_init(vm, BOOTSTRAP_VCPU, base, stack) != 0)
 		return -1;
 
 	if ((flags & BINARY_LOAD_PROTECTED) != 0)
 		if (vcpu_enable_protected_mode(vm, BOOTSTRAP_VCPU) != 0)
 			return -1;
 
-	if ((flags & BINARY_LOAD_PAGED) != 0) {
-		pdir = round_up(base + image_size, PAGE_SIZE);
-		if (vcpu_enable_paged_mode(vm, BOOTSTRAP_VCPU, pdir) != 0)
+	if ((flags & BINARY_LOAD_PAGED) != 0)
+		if (vcpu_enable_paged_mode(vm, BOOTSTRAP_VCPU, stack) != 0)
 			return -1;
-	}
 
 	return 0;
 }

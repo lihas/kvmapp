@@ -11,10 +11,11 @@
  * @vm:    virtual machine descriptor
  * @vcpu:  ID of a virtual CPU to initialize
  * @entry: guest physical entry point (RIP value)
+ * @stack: guest physical stack top (RSP value)
  *
  * Return: zero on success, or -1 if an error occurred
  */
-int vcpu_init(struct vm *vm, unsigned vcpu, uintptr_t entry)
+int vcpu_init(struct vm *vm, unsigned vcpu, uintptr_t entry, uintptr_t stack)
 {
 	struct kvm_regs regs;
 
@@ -23,6 +24,7 @@ int vcpu_init(struct vm *vm, unsigned vcpu, uintptr_t entry)
 
 	regs.rflags = 0x2;
 	regs.rip = entry;
+	regs.rsp = stack;
 
 	if (vcpu_set_regs(vm, vcpu, &regs) != 0)
 		return -1;
