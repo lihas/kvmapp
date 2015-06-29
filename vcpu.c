@@ -6,6 +6,29 @@
 #include "vcpu.h"
 
 /**
+ * enum
+ *
+ * @CR0_PE:  protected mode enable
+ * @CR0_PG:  paging mode enable
+ * @CR4_PSE: page size extension enable
+ *
+ * @PDE_P:  page directory entry present bit
+ * @PDE_RW: page directory entry read/write bit
+ * @PDE_S:  page directory entry supervisor bit
+ * @PDE_PS: page directory entry page size bit (4MB)
+ */
+enum {
+	CR0_PE  = 1UL << 0,
+	CR0_PG  = 1UL << 31,
+	CR4_PSE = 1UL << 4,
+
+	PDE_P   = 1UL << 0,
+	PDE_RW  = 1UL << 1,
+	PDE_S   = 1UL << 2,
+	PDE_PS  = 1UL << 7,
+};
+
+/**
  * vcpu_init() - perform common initialization of a virtual CPU
  *
  * @vm:    virtual machine descriptor
@@ -52,7 +75,7 @@ int vcpu_enable_protected_mode(struct vm *vm, unsigned vcpu)
 	sregs.cs.g     = sregs.ss.g     = sregs.ds.g     = 1;
 	sregs.cs.db    = sregs.ss.db                     = 1;
 
-	sregs.cr0 |= 1; /* enable protected mode */
+	sregs.cr0 |= CR0_PE;
 
 	if (vcpu_set_sregs(vm, vcpu, &sregs) != 0)
 		return -1;
@@ -78,16 +101,17 @@ int vcpu_enable_paged_mode(struct vm *vm, unsigned vcpu, uintptr_t pdir)
 	if (vcpu_get_sregs(vm, vcpu, &sregs) != 0)
 		return -1;
 
-	sregs.cr0 |= 1UL << 31; /* enable paged mode */
-	sregs.cr4 |= 1UL << 4;  /* enable page size extension */
+	sregs.cr0 |= CR0_PG;
+	sregs.cr4 |= CR4_PSE;
 	sregs.cr3 = pdir;
 
 	pd = vm_get_memory(vm, pdir, PAGE_SIZE);
 	if (pd == NULL)
 		return -1;
 
+	/* Initialize identity mapping */
 	for (i = 0; i < 1024; i++)
-		pd[i] = (i << 22) | 0x87;
+		pd[i] = (i << 22) | PDE_PS | PDE_S | PDE_RW | PDE_P;
 
 	if (vcpu_set_sregs(vm, vcpu, &sregs) != 0)
 		return -1;

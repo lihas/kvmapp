@@ -14,9 +14,15 @@
 
 #include "kvm.h"
 
+/**
+ * enum
+ *
+ * @MAX_VCPUS:    maximum number of virtual CPUs
+ * @MAX_MEMSLOTS: maximum number of memory slots
+ */
 enum {
-	MAX_VCPUS    = 4, /* maximum number of virtual CPUs */
-	MAX_MEMSLOTS = 8, /* maximum number of memory slots */
+	MAX_VCPUS    = 4,
+	MAX_MEMSLOTS = 8,
 };
 
 /**
