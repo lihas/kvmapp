@@ -2,7 +2,7 @@ CC = gcc
 AS = gcc
 LD = gcc
 
-CFLAGS  = -Wall -Werror -Wextra -O0 -g -I.
+CFLAGS  = -Wall -Werror -Wextra -Og -g -I.
 ASFLAGS = -m32
 LDFLAGS = -g
 
