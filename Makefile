@@ -2,9 +2,9 @@ CC = gcc
 AS = gcc
 LD = gcc
 
-CFLAGS  = -Wall -Werror -Wextra -Og -g -I.
+CFLAGS  = -Wall -Werror -Wextra -Og -g -fsanitize=address -fno-omit-frame-pointer -I.
 ASFLAGS = -m32
-LDFLAGS = -g
+LDFLAGS = -Og -g -fsanitize=address -fno-omit-frame-pointer
 
 OBJS = $(SRCS:.c=.o)
 SRCS =                                                                       \
