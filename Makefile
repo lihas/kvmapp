@@ -11,6 +11,7 @@ SRCS =                                                                       \
   kvm.c                                                                      \
   kvmapp.c                                                                   \
   loader/binary.c                                                            \
+  log.c                                                                      \
   vcpu.c
 
 GUESTS_OBJS = $(GUESTS:.S=.o)

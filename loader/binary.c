@@ -1,4 +1,5 @@
 #include <assert.h>
+#include <errno.h>
 
 #include <fcntl.h>
 #include <sys/stat.h>
@@ -11,6 +12,7 @@
 #include "binary.h"
 #include "kvm.h"
 #include "kvmapp.h"
+#include "log.h"
 #include "vcpu.h"
 
 /**
@@ -29,16 +31,18 @@ static ssize_t load_image(struct vm *vm, const char *path, uintptr_t base)
 	void *dst;
 	int fd;
 
-	fd = open(path, O_RDWR);
-	if (fd > 0) {
-		if (fstat(fd, &st) == 0) {
-			dst = vm_get_memory(vm, base, st.st_size);
-			if (dst != NULL)
-				ret = read(fd, dst, st.st_size);
-		}
-
-		close(fd);
+	fd = open(path, O_RDONLY);
+	if (fd > 0 && fstat(fd, &st) == 0) {
+		dst = vm_get_memory(vm, base, st.st_size);
+		if (dst != NULL)
+			ret = read(fd, dst, st.st_size);
 	}
+
+	if (ret < 0 && errno != 0)
+		error("%s", path);
+
+	if (fd > 0)
+		close(fd);
 
 	return ret;
 }
@@ -57,26 +61,26 @@ int binary_load(struct vm *vm, const char *path, uintptr_t base, int flags)
 {
 	ssize_t image_size;
 	uintptr_t stack;
+	int ret = -1;
 
 	assert(vm != NULL);
 	assert(path != NULL);
 	assert((flags & ~(BINARY_LOAD_PROTECTED | BINARY_LOAD_PAGED)) == 0);
 
 	image_size = load_image(vm, path, base);
-	if (image_size < 0)
-		return -1;
+	if (image_size > 0) {
+		stack = round_up(base + image_size + PAGE_SIZE, PAGE_SIZE);
+		ret = vcpu_init(vm, BOOT_VCPU, base, stack);
 
-	stack = round_up(base + image_size + PAGE_SIZE, PAGE_SIZE);
-	if (vcpu_init(vm, BOOTSTRAP_VCPU, base, stack) != 0)
-		return -1;
+		if ((flags & BINARY_LOAD_PROTECTED) != 0)
+			ret |= vcpu_enable_protected_mode(vm, BOOT_VCPU);
 
-	if ((flags & BINARY_LOAD_PROTECTED) != 0)
-		if (vcpu_enable_protected_mode(vm, BOOTSTRAP_VCPU) != 0)
-			return -1;
+		if ((flags & BINARY_LOAD_PAGED) != 0)
+			ret |= vcpu_enable_paged_mode(vm, BOOT_VCPU, stack);
+	}
 
-	if ((flags & BINARY_LOAD_PAGED) != 0)
-		if (vcpu_enable_paged_mode(vm, BOOTSTRAP_VCPU, stack) != 0)
-			return -1;
+	if (ret != 0)
+		errorx("%s: failed to bootstrap vm", path);
 
-	return 0;
+	return ret;
 }

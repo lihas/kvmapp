@@ -8,10 +8,10 @@ struct vm;
 /**
  * enum
  *
- * @BOOTSTRAP_VCPU: default bootstrap virtual CPU ID
+ * @BOOT_VCPU: default bootstrap virtual CPU ID
  */
 enum {
-	BOOTSTRAP_VCPU = 0,
+	BOOT_VCPU = 0,
 };
 
 int vcpu_init(struct vm *, unsigned, uintptr_t, uintptr_t);
