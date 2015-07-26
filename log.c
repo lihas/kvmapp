@@ -6,8 +6,6 @@
 
 #include "log.h"
 
-#ifndef NDEBUG
-
 /**
  * error() - print error message, including errno string, to stderr
  *
@@ -41,8 +39,6 @@ void errorx(const char *fmt, ...)
 	vwarnx(fmt, ap);
 	va_end(ap);
 }
-
-#endif /* NDEBUG */
 
 /**
  * fail() - print error message, including errno string, to stderr and exit
